@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@theme {
+  --color-navy-950: #06060f;
+  --color-navy-900: #0a0a1a;
+  --color-navy-800: #0f0f2a;
+  --color-navy-700: #1a1a3a;
+  --color-navy-600: #252550;
+  --color-navy-500: #303070;
+  --color-accent-cyan: #06b6d4;
+  --color-accent-purple: #8b5cf6;
+  --color-accent-blue: #3b82f6;
+  --font-cairo: "Cairo", sans-serif;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-navy-900);
+    color: #ffffff;
+    font-family: var(--font-cairo);
+  }
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--color-accent-cyan), var(--color-accent-purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-border {
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  position: relative;
+}
+
+.gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--color-accent-cyan), var(--color-accent-purple));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.gradient-btn {
+  background: linear-gradient(135deg, var(--color-accent-cyan), var(--color-accent-purple));
+  transition: opacity 0.2s, transform 0.2s;
+}
+.gradient-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.card-glow {
+  box-shadow: 0 0 30px rgba(6, 182, 212, 0.08), 0 0 60px rgba(139, 92, 246, 0.04);
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(6, 182, 212, 0.15); }
+  50% { box-shadow: 0 0 40px rgba(6, 182, 212, 0.3), 0 0 60px rgba(139, 92, 246, 0.15); }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
