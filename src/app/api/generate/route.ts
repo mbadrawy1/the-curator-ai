@@ -1,43 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { InferenceClient } from "@huggingface/inference";
 
 export const maxDuration = 60;
-
-const MODELS = [
-  "black-forest-labs/FLUX.1-schnell",
-  "stabilityai/stable-diffusion-xl-base-1.0",
-];
-
-async function callHuggingFace(
-  model: string,
-  prompt: string,
-  hfToken: string,
-  width: number,
-  height: number,
-  steps: number
-): Promise<Response> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${hfToken}`,
-  };
-
-  const body: Record<string, unknown> = { inputs: prompt };
-
-  if (model.includes("FLUX")) {
-    body.parameters = { num_inference_steps: steps };
-  } else {
-    body.parameters = {
-      width,
-      height,
-      num_inference_steps: steps,
-    };
-  }
-
-  return fetch(`https://api-inference.huggingface.co/models/${model}`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -58,88 +22,64 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const client = new InferenceClient(hfToken);
     const seed = Math.floor(Math.random() * 2147483647);
-    const dims = resolution?.split(" ")[0] || "1024x1024";
-    const [width, height] = dims.split("x").map(Number);
     const inferSteps = steps || 4;
 
-    let lastError = "";
+    const result: unknown = await client.textToImage({
+      provider: "auto",
+      model: "black-forest-labs/FLUX.1-schnell",
+      inputs: prompt,
+      parameters: {
+        num_inference_steps: inferSteps,
+        seed,
+      },
+    });
 
-    for (const model of MODELS) {
-      const response = await callHuggingFace(
-        model,
-        prompt,
-        hfToken,
-        width || 1024,
-        height || 1024,
-        inferSteps
+    let base64: string;
+    if (typeof result === "string") {
+      base64 = result;
+    } else if (result && typeof (result as Blob).arrayBuffer === "function") {
+      const arrayBuffer = await (result as Blob).arrayBuffer();
+      base64 = Buffer.from(arrayBuffer).toString("base64");
+    } else {
+      throw new Error("استجابة غير متوقعة من خدمة توليد الصور");
+    }
+
+    return NextResponse.json({
+      image: base64,
+      seed,
+      steps: inferSteps,
+      resolution: resolution || "1024x1024 ( 1:1 )",
+    });
+  } catch (error) {
+    console.error("Generate error:", error);
+    const message =
+      error instanceof Error ? error.message : "خطأ غير معروف";
+
+    if (message.includes("401") || message.includes("403") || message.includes("token")) {
+      return NextResponse.json(
+        { error: "مفتاح API غير صالح. تحقق من صلاحية HUGGINGFACE_API_KEY." },
+        { status: 403 }
       );
+    }
 
-      if (response.ok) {
-        const contentType = response.headers.get("content-type") || "";
+    if (message.includes("503") || message.includes("loading")) {
+      return NextResponse.json(
+        { error: "النموذج قيد التحميل، يرجى المحاولة بعد لحظات." },
+        { status: 503 }
+      );
+    }
 
-        if (contentType.includes("image")) {
-          const imageBuffer = await response.arrayBuffer();
-          const base64 = Buffer.from(imageBuffer).toString("base64");
-          return NextResponse.json({
-            image: base64,
-            seed,
-            steps: inferSteps,
-            resolution: resolution || "1024x1024 ( 1:1 )",
-          });
-        }
-
-        const jsonResp = await response.json();
-        if (Array.isArray(jsonResp) && jsonResp[0]?.generated_image) {
-          return NextResponse.json({
-            image: jsonResp[0].generated_image,
-            seed,
-            steps: inferSteps,
-            resolution: resolution || "1024x1024 ( 1:1 )",
-          });
-        }
-
-        lastError = `Unexpected response format from ${model}`;
-        continue;
-      }
-
-      const errText = await response.text();
-      console.error(`HF ${model} error:`, response.status, errText);
-
-      if (response.status === 401 || response.status === 403) {
-        return NextResponse.json(
-          { error: "مفتاح API غير صالح. تحقق من صلاحية HUGGINGFACE_API_KEY." },
-          { status: 403 }
-        );
-      }
-
-      if (response.status === 503) {
-        let parsed;
-        try {
-          parsed = JSON.parse(errText);
-        } catch {
-          /* ignore */
-        }
-        if (parsed?.estimated_time) {
-          lastError = `النموذج ${model} قيد التحميل (${Math.ceil(parsed.estimated_time)} ثانية). جارٍ تجربة نموذج آخر...`;
-          continue;
-        }
-      }
-
-      lastError = `خطأ من ${model}: ${response.status} - ${errText.slice(0, 200)}`;
-      continue;
+    if (message.includes("credits") || message.includes("limit")) {
+      return NextResponse.json(
+        { error: "تم استنفاد رصيد الاستخدام المجاني. يرجى ترقية حساب Hugging Face." },
+        { status: 429 }
+      );
     }
 
     return NextResponse.json(
-      { error: lastError || "فشلت جميع النماذج. حاول مجدداً بعد قليل." },
-      { status: 500 }
-    );
-  } catch (error) {
-    console.error("Generate error:", error);
-    return NextResponse.json(
-      {
-        error: `خطأ غير متوقع: ${error instanceof Error ? error.message : "unknown"}`,
-      },
+      { error: `حدث خطأ: ${message}` },
       { status: 500 }
     );
   }
